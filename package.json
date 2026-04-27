@@ -1,0 +1,33 @@
+{
+  "name": "verytisagntagents",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tychiqueestevepro-maker/VerytisAGNTagents.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tychiqueestevepro-maker/VerytisAGNTagents/issues"
+  },
+  "homepage": "https://github.com/tychiqueestevepro-maker/VerytisAGNTagents#readme",
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.71",
+    "@ai-sdk/openai": "^3.0.53",
+    "@supabase/supabase-js": "^2.104.1",
+    "ai": "^6.0.168",
+    "dotenv": "^17.4.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3"
+  }
+}

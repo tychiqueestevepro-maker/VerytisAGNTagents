@@ -1,0 +1,117 @@
+/**
+ * src/agents/prospecting/copywriter.agent.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Copywriter Agent — generates personalised outreach messages.
+ *
+ * Input  : Enriched Prospect + QualificationResult + channel config
+ * Output : MessageBundle (one message per requested channel)
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+import { z }                      from "zod";
+import { generateObject }         from "../../llm/generateObject.js";
+import { createLogger }           from "../../logs/logger.js";
+import type { Prospect }          from "../../schemas/prospect.schema.js";
+import type { QualificationResult } from "../../schemas/qualifier.schema.js";
+import {
+  MessageSchema,
+  MessageBundleSchema,
+  type OutreachChannel,
+  type MessageBundle,
+} from "../../schemas/message.schema.js";
+
+const log = createLogger("agent:copywriter");
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+
+export interface CopywriterInput {
+  prospect:        Prospect;
+  qualification:   QualificationResult;
+  channels:        OutreachChannel[];
+  tone:            "formal" | "conversational" | "technical";
+  language:        string;
+  brand_context:   string;
+}
+
+// ── System prompt ─────────────────────────────────────────────────────────────
+
+function buildSystemPrompt(input: CopywriterInput): string {
+  return `
+Tu es un expert en copywriting B2B ultra-personnalisé.
+Ton objectif : rédiger des messages d'outreach qui génèrent des réponses, pas des désabonnements.
+
+Contexte de marque : ${input.brand_context}
+Ton de communication : ${input.tone}
+Langue : ${input.language}
+
+Règles absolues :
+- Personnalise CHAQUE message avec des détails spécifiques au prospect.
+- Ne mentionne jamais la concurrence.
+- Un seul CTA clair par message.
+- Email/LinkedIn : max 150 mots. WhatsApp : max 80 mots.
+- Commence toujours par le prénom du prospect.
+- La valeur d'abord, la vente ensuite.
+
+Réponds UNIQUEMENT avec un JSON conforme au schéma demandé.
+`.trim();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Single-channel message schema (reuse from message.schema)
+const SingleMessageResultSchema = z.object({ message: MessageSchema }).strict();
+
+export async function runCopywriterAgent(
+  input: CopywriterInput
+): Promise<MessageBundle> {
+  const { prospect, qualification, channels } = input;
+
+  log.info("Copywriter agent started", {
+    prospect: `${prospect.first_name} ${prospect.last_name}`,
+    channels,
+  });
+
+  const messages = await Promise.all(
+    channels.map(async (channel) => {
+      const userPrompt = `
+Rédige un message ${channel} pour ce prospect :
+
+--- PROSPECT ---
+Prénom     : ${prospect.first_name}
+Nom        : ${prospect.last_name}
+Titre      : ${prospect.title}
+Entreprise : ${prospect.company}
+Industrie  : ${prospect.industry ?? "non précisée"}
+Géographie : ${prospect.geography ?? "non précisée"}
+
+--- QUALIFICATION ---
+Score ICP  : ${qualification.score}/100
+Critères ✓ : ${qualification.matched_criteria.join(", ")}
+Contexte   : ${qualification.reasoning.icp_match}
+
+Canal cible: ${channel}
+`.trim();
+
+      const result = await generateObject({
+        schema: SingleMessageResultSchema,
+        system: buildSystemPrompt(input),
+        prompt: userPrompt,
+        model:  "gpt-4o",
+      });
+
+      return { ...result.message, channel };
+    })
+  );
+
+  const bundle = MessageBundleSchema.parse({
+    prospect_ref: `${prospect.first_name}_${prospect.last_name}_${prospect.company}`,
+    messages,
+    created_at:   new Date().toISOString(),
+  });
+
+  log.info("Copywriter agent completed", { messages_generated: messages.length });
+
+  return bundle;
+}

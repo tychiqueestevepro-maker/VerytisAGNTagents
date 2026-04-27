@@ -1,0 +1,58 @@
+/**
+ * src/config/env.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Single source of truth for all environment variables.
+ * Validated with Zod at startup — the process exits immediately if any
+ * required variable is missing or malformed.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+import { z } from "zod";
+import "dotenv/config";
+
+const EnvSchema = z.object({
+  // ── Supabase ───────────────────────────────────────────────────────────────
+  SUPABASE_URL:              z.string().url(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+
+  // ── LLM providers ─────────────────────────────────────────────────────────
+  OPENAI_API_KEY:   z.string().min(1),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+
+  // ── Services ───────────────────────────────────────────────────────────────
+  WHATSAPP_API_URL:   z.string().url().optional(),
+  WHATSAPP_API_TOKEN: z.string().min(1).optional(),
+
+  // ── Agent UUIDs (depuis la table `agents` après seed) ─────────────────────
+  AGENT_ID_ENRICHMENT: z.string().uuid().optional(),
+  AGENT_ID_QUALIFIER:  z.string().uuid().optional(),
+  AGENT_ID_COPYWRITER: z.string().uuid().optional(),
+  AGENT_ID_QA:         z.string().uuid().optional(),
+
+  // ── Workflow step UUIDs (depuis la table `workflow_steps` après seed) ──────
+  STEP_ID_ENRICHMENT: z.string().uuid().optional(),
+  STEP_ID_QUALIFIER:  z.string().uuid().optional(),
+  STEP_ID_COPYWRITER: z.string().uuid().optional(),
+  STEP_ID_QA:         z.string().uuid().optional(),
+
+  // ── Runtime ────────────────────────────────────────────────────────────────
+  NODE_ENV:  z.enum(["development", "test", "production"]).default("development"),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+});
+
+export type Env = z.infer<typeof EnvSchema>;
+
+function parseEnv(): Env {
+  const result = EnvSchema.safeParse(process.env);
+
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  • ${i.path.join(".")}: ${i.message}`)
+      .join("\n");
+    throw new Error(`[Config] Invalid environment variables:\n${issues}`);
+  }
+
+  return result.data;
+}
+
+export const env = parseEnv();
