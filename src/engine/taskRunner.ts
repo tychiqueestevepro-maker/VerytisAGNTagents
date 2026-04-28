@@ -62,7 +62,7 @@ export interface StepDefinition {
 /** La logique métier pure de l'agent */
 export interface Task<TInput, TOutput> {
   name: string;
-  run:  (input: TInput, config: Record<string, unknown>) => Promise<TOutput>;
+  run:  (input: TInput, config: Record<string, unknown>, meta: WorkflowRunMeta) => Promise<TOutput>;
 }
 
 export interface TaskResult<TOutput> {
@@ -199,7 +199,7 @@ export async function runTask<TInput, TOutput>(
       runType:         step.runType,
       input:           input as Record<string, unknown>,
     },
-    (_runId) => task.run(input, step.config)
+    (_runId) => task.run(input, step.config, meta)
   );
 
   const duration_ms = Date.now() - globalStart;

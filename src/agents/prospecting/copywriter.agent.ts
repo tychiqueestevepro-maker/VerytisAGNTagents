@@ -19,6 +19,8 @@ import {
   type OutreachChannel,
   type MessageBundle,
 } from "../../schemas/message.schema.js";
+import { AgentMemoryService } from "../../services/agentMemory.service.js";
+import type { WorkflowRunMeta } from "../../engine/taskRunner.js";
 
 const log = createLogger("agent:copywriter");
 
@@ -35,7 +37,11 @@ export interface CopywriterInput {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(input: CopywriterInput): string {
+function buildSystemPrompt(input: CopywriterInput, memories: any[] = []): string {
+  const memoryContext = memories.length > 0
+    ? `\n--- MÉMOIRE / APPRENTISSAGES PRÉCÉDENTS ---\nPrends en compte ces leçons issues de tes interactions passées :\n${memories.map(m => `- ${JSON.stringify(m.content)}`).join("\n")}\n`
+    : "";
+
   return `
 Tu es un expert en copywriting B2B ultra-personnalisé.
 Ton objectif : rédiger des messages d'outreach qui génèrent des réponses, pas des désabonnements.
@@ -43,6 +49,7 @@ Ton objectif : rédiger des messages d'outreach qui génèrent des réponses, pa
 Contexte de marque : ${input.brand_context}
 Ton de communication : ${input.tone}
 Langue : ${input.language}
+${memoryContext}
 
 Règles absolues :
 - Personnalise CHAQUE message avec des détails spécifiques au prospect.
@@ -64,7 +71,9 @@ Réponds UNIQUEMENT avec un JSON conforme au schéma demandé.
 const SingleMessageResultSchema = z.object({ message: MessageSchema }).strict();
 
 export async function runCopywriterAgent(
-  input: CopywriterInput
+  input: CopywriterInput,
+  _config?: Record<string, unknown>,
+  meta?: WorkflowRunMeta
 ): Promise<MessageBundle> {
   const { prospect, qualification, channels } = input;
 
@@ -72,6 +81,16 @@ export async function runCopywriterAgent(
     prospect: `${prospect.first_name} ${prospect.last_name}`,
     channels,
   });
+
+  let memories: any[] = [];
+  if (meta?.clientId) {
+    memories = await AgentMemoryService.getContextMemories({
+      clientId: meta.clientId,
+      workflowId: meta.workflowId,
+      prospectId: meta.prospectId,
+      memoryType: "lesson",
+    });
+  }
 
   const messages = await Promise.all(
     channels.map(async (channel) => {
@@ -96,7 +115,7 @@ Canal cible: ${channel}
 
       const result = await generateObject({
         schema: SingleMessageResultSchema,
-        system: buildSystemPrompt(input),
+        system: buildSystemPrompt(input, memories),
         prompt: userPrompt,
         model:  "gpt-4o",
       });

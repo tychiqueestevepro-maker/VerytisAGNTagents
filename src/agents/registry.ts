@@ -21,20 +21,20 @@ const log = createLogger("agents:registry");
 export const AgentRegistry: Record<string, Task<any, any>> = {
   qualifier: {
     name: "qualifier",
-    run:  async (ctx, _config) => {
+    run:  async (ctx, _config, meta) => {
       return { qualification: await runQualifierAgent({ prospect: ctx.prospect, icp: ctx.config.icp }) };
     },
   },
   enrichment: {
     name: "enrichment",
-    run:  async (ctx, _config) => {
+    run:  async (ctx, _config, meta) => {
       const out = await runEnrichmentAgent({ prospect: ctx.prospect });
       return { prospect: out.prospect, enrichment: out.enrichment };
     },
   },
   copywriter: {
     name: "copywriter",
-    run:  async (ctx, config) => {
+    run:  async (ctx, config, meta) => {
       const bundle = await runCopywriterAgent({
         prospect:      ctx.prospect,
         qualification: ctx.qualification,
@@ -42,13 +42,13 @@ export const AgentRegistry: Record<string, Task<any, any>> = {
         tone:          ctx.config.tone,
         language:      ctx.config.language,
         brand_context: ctx.config.brand_context,
-      });
+      }, config, meta);
       return { messageBundle: bundle };
     },
   },
   qa: {
     name: "qa",
-    run:  async (ctx, config) => {
+    run:  async (ctx, config, meta) => {
       const qa = await runQAAgent(ctx.messageBundle);
       return { qaResult: qa };
     },
@@ -56,21 +56,21 @@ export const AgentRegistry: Record<string, Task<any, any>> = {
   // Placeholders for new agents
   hunter: {
     name: "hunter",
-    run:  async (ctx, _config) => {
+    run:  async (ctx, _config, meta) => {
       log.info("Hunter agent called (mock)");
       return {};
     },
   },
   whatsapp_validation: {
     name: "whatsapp_validation",
-    run:  async (ctx, _config) => {
+    run:  async (ctx, _config, meta) => {
       log.info("WhatsApp validation agent called (mock)");
       return {};
     },
   },
   extension_ops: {
     name: "extension_ops",
-    run:  async (ctx, _config) => {
+    run:  async (ctx, _config, meta) => {
       log.info("Extension Ops agent called (mock)");
       return {};
     },
