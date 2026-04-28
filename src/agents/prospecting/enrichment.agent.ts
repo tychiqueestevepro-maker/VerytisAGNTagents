@@ -22,11 +22,11 @@ const log = createLogger("agent:enrichment");
 
 const EnrichmentResultSchema = z.object({
   /** Inferred industry if not provided */
-  industry:      z.string().optional(),
+  industry:      z.string().nullable().describe("Industrie devinée ou null"),
   /** Inferred company size bracket */
-  company_size:  z.enum(["1-10", "11-50", "51-200", "201-500", "500+"]).optional(),
+  company_size:  z.enum(["1-10", "11-50", "51-200", "201-500", "500+"]).nullable().describe("Taille devinée ou null"),
   /** Inferred geography */
-  geography:     z.string().optional(),
+  geography:     z.string().nullable().describe("Géo devinée ou null"),
   /** Any additional context useful for copywriting */
   context_notes: z.string().describe("Key business context inferred from available signals"),
   /** Confidence 0–1 */

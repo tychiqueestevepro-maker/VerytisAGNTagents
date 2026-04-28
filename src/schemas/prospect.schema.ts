@@ -18,7 +18,6 @@ export const ProspectSchema = z.object({
   email:      z.string().email().optional(),
   phone:      z.string().optional(),
   linkedin:   z.string().url().optional(),
-  whatsapp:   z.string().optional(),
 
   // ── Professional ──────────────────────────────────────────────────────────
   title:      z.string().min(1),

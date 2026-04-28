@@ -19,7 +19,6 @@ export { QualificationResultSchema, QUALIFICATION_THRESHOLD }   from "./schemas/
 export { MessageSchema, MessageBundleSchema, OutreachChannelSchema } from "./schemas/message.schema.js";
 
 // ── Services ─────────────────────────────────────────────────────────────────
-export { sendWhatsAppMessage }       from "./services/whatsapp.service.js";
 export { normaliseExtensionPayload } from "./services/extension.service.js";
 
 // ── Infrastructure ───────────────────────────────────────────────────────────

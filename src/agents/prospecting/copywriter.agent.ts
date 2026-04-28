@@ -55,7 +55,7 @@ Règles absolues :
 - Personnalise CHAQUE message avec des détails spécifiques au prospect.
 - Ne mentionne jamais la concurrence.
 - Un seul CTA clair par message.
-- Email/LinkedIn : max 150 mots. WhatsApp : max 80 mots.
+- Email/LinkedIn : max 150 mots.
 - Commence toujours par le prénom du prospect.
 - La valeur d'abord, la vente ensuite.
 

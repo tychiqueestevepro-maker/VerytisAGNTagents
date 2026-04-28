@@ -46,7 +46,7 @@ const ProspectingConfigSchema = z.object({
     job_titles:       z.array(z.string()).min(1),
     exclude_keywords: z.array(z.string()).default([]),
   }),
-  channels:      z.array(z.enum(["email", "linkedin", "whatsapp", "sms"])).min(1),
+  channels:      z.array(z.enum(["email", "linkedin", "sms"])).min(1),
   tone:          z.enum(["formal", "conversational", "technical"]).default("conversational"),
   language:      z.string().length(2).default("fr"),
   brand_context: z.string().min(10),

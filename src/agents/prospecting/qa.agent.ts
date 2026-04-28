@@ -29,7 +29,7 @@ const QAIssueSchema = z.object({
   channel:       z.string(),
   severity:      z.enum(["blocking", "warning", "suggestion"]),
   description:   z.string(),
-  fix:           z.string().optional(),
+  fix:           z.string().nullable().describe("Proposition de correction ou null"),
 });
 
 export const QAResultSchema = z.object({
@@ -48,7 +48,6 @@ export type QAResult = z.infer<typeof QAResultSchema>;
 const CHAR_LIMITS: Record<string, number> = {
   email:    2000,
   linkedin: 300,
-  whatsapp: 600,
   sms:      160,
 };
 

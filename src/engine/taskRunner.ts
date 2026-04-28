@@ -205,14 +205,29 @@ export async function runTask<TInput, TOutput>(
   const duration_ms = Date.now() - globalStart;
 
   // ── 5. updateTaskResult (successStatus | failureStatus) ──────────────────
-  const finalTaskStatus = agentRunResult.status === "completed" ? "completed" : "failed";
+  const outputRecord = (agentRunResult.output ?? {}) as Record<string, unknown>;
 
   await updateTaskResult(
     db,
     taskId,
     finalTaskStatus,
-    (agentRunResult.output ?? {}) as Record<string, unknown>
+    outputRecord
   );
+
+  // ── 5b. Update prospect with cleaned data if present ────────────────────────
+  if (finalTaskStatus === "completed" && meta.prospectId && outputRecord.prospect) {
+    const p = outputRecord.prospect as any;
+    const updateData: any = {};
+    if (p.first_name || p.last_name) {
+      updateData.decision_maker = `${p.first_name || ""} ${p.last_name || ""}`.trim();
+    }
+    if (p.title) updateData.role = p.title;
+    if (p.company) updateData.company_name = p.company;
+
+    if (Object.keys(updateData).length > 0) {
+      await db.from("prospects").update(updateData).eq("id", meta.prospectId);
+    }
+  }
 
   // ── 6. Audit : task.completed | task.failed ───────────────────────────────
   await auditLog(db, meta.clientId, `task.${task.name}.${finalTaskStatus}`, taskId, {

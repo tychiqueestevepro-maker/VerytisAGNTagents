@@ -10,7 +10,6 @@ import { z } from "zod";
 export const OutreachChannelSchema = z.enum([
   "email",
   "linkedin",
-  "whatsapp",
   "sms",
 ]);
 
