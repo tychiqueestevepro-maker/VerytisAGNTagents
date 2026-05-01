@@ -211,9 +211,13 @@ export async function runWorkflowFromDb<TCtx extends object>(
     steps: steps.map((s: any) => {
       const agent = s.agents;
       const task = AgentRegistry[agent.slug];
+      const agentInactive = agent?.is_active === false;
 
       if (!task) {
         log.warn(`Agent logic not found for slug: ${agent.slug}. Step will be skipped.`);
+      }
+      if (agentInactive) {
+        log.warn(`Agent inactive for slug: ${agent.slug}. Step will be skipped.`);
       }
 
       return {
@@ -226,7 +230,7 @@ export async function runWorkflowFromDb<TCtx extends object>(
         failureStatus:   s.failure_status,
         config:          (s.config as Record<string, unknown>) ?? {},
         task:            task || { name: "no-op", run: async () => ({}) },
-        skip:            task ? undefined : () => true, // Skip if no logic found
+        skip:            task && !agentInactive ? undefined : () => true,
       };
     }),
   };

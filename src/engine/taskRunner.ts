@@ -205,6 +205,7 @@ export async function runTask<TInput, TOutput>(
   const duration_ms = Date.now() - globalStart;
 
   // ── 5. updateTaskResult (successStatus | failureStatus) ──────────────────
+  const finalTaskStatus = agentRunResult.status === "completed" ? "completed" : "failed";
   const outputRecord = (agentRunResult.output ?? {}) as Record<string, unknown>;
 
   await updateTaskResult(

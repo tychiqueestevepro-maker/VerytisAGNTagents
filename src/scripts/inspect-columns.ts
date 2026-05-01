@@ -9,7 +9,7 @@ async function check() {
     return;
   }
 
-  if (data && data.length > 0) {
+  if (data?.[0]) {
     console.log("Columns in client_flows:", Object.keys(data[0]));
   } else {
     console.log("No data in client_flows to inspect columns.");

@@ -4,36 +4,33 @@
  * Enrichment Agent — augments a prospect with additional data points.
  *
  * In production: calls Clay, Apollo, Hunter.io, or similar APIs.
- * Here: LLM-based enrichment from available signals.
+ * Current policy: disabled for automatic runs because the LinkedIn extension
+ * already provides the useful profile fields, and LLM inference from those same
+ * fields is expensive and may hallucinate industry/company size/geography.
+ *
+ * Re-enable this step when enrichment is backed by verified external data from
+ * Apollo, Clay, Hunter.io, LinkedIn API, or another deterministic provider.
  *
  * Input  : Partial Prospect
  * Output : Enriched Prospect (fields merged back in)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { z }                from "zod";
-import { generateObject }   from "../../llm/generateObject.js";
 import { createLogger }     from "../../logs/logger.js";
 import type { Prospect }    from "../../schemas/prospect.schema.js";
 
 const log = createLogger("agent:enrichment");
 
-// ── Output schema ─────────────────────────────────────────────────────────────
+export const ENRICHMENT_DISABLED_NOTE =
+  "Enrichment is disabled in automatic prospecting: LinkedIn extension imports already carry the useful profile fields, and LLM-only enrichment would guess from the same data. Re-enable when backed by Apollo, Clay, Hunter.io, LinkedIn API, or another verified external data source.";
 
-const EnrichmentResultSchema = z.object({
-  /** Inferred industry if not provided */
-  industry:      z.string().nullable().describe("Industrie devinée ou null"),
-  /** Inferred company size bracket */
-  company_size:  z.enum(["1-10", "11-50", "51-200", "201-500", "500+"]).nullable().describe("Taille devinée ou null"),
-  /** Inferred geography */
-  geography:     z.string().nullable().describe("Géo devinée ou null"),
-  /** Any additional context useful for copywriting */
-  context_notes: z.string().describe("Key business context inferred from available signals"),
-  /** Confidence 0–1 */
-  confidence:    z.number().min(0).max(1),
-}).strict();
-
-type EnrichmentResult = z.infer<typeof EnrichmentResultSchema>;
+type EnrichmentResult = {
+  industry: string | null;
+  company_size: Prospect["company_size"] | null;
+  geography: string | null;
+  context_notes: string;
+  confidence: number;
+};
 
 export interface EnrichmentInput {
   prospect: Prospect;
@@ -44,50 +41,23 @@ export interface EnrichmentOutput {
   enrichment:  EnrichmentResult;
 }
 
-const SYSTEM_PROMPT = `
-Tu es un expert en enrichissement de données B2B.
-À partir des informations disponibles sur un prospect, tu déduis les données manquantes
-(industrie, taille d'entreprise, géographie, contexte métier).
-
-Base-toi sur le titre de poste, le nom de l'entreprise et toute autre donnée disponible.
-Réponds UNIQUEMENT avec un JSON conforme au schéma demandé.
-`.trim();
-
 export async function runEnrichmentAgent(
   input: EnrichmentInput
 ): Promise<EnrichmentOutput> {
   const { prospect } = input;
 
-  log.info("Enrichment agent started", { company: prospect.company });
-
-  const userPrompt = `
-Enrichis ce prospect avec les données manquantes :
-
-Nom       : ${prospect.first_name} ${prospect.last_name}
-Titre     : ${prospect.title}
-Entreprise: ${prospect.company}
-LinkedIn  : ${prospect.linkedin ?? "non fourni"}
-Industrie : ${prospect.industry ?? "MANQUANT"}
-Taille    : ${prospect.company_size ?? "MANQUANT"}
-Géographie: ${prospect.geography ?? "MANQUANT"}
-`.trim();
-
-  const enrichment = await generateObject({
-    schema: EnrichmentResultSchema,
-    system: SYSTEM_PROMPT,
-    prompt: userPrompt,
-    model:  "gpt-4o-mini",
+  log.info("Enrichment agent skipped", {
+    company: prospect.company,
+    reason:  ENRICHMENT_DISABLED_NOTE,
   });
 
-  // Merge enriched fields back into prospect (only fill gaps)
-  const enrichedProspect: Prospect = {
-    ...prospect,
-    industry:     prospect.industry     ?? enrichment.industry,
-    company_size: prospect.company_size ?? enrichment.company_size,
-    geography:    prospect.geography    ?? enrichment.geography,
+  const enrichment: EnrichmentResult = {
+    industry:      prospect.industry ?? null,
+    company_size:  prospect.company_size ?? null,
+    geography:     prospect.geography ?? null,
+    context_notes: ENRICHMENT_DISABLED_NOTE,
+    confidence:    0,
   };
 
-  log.info("Enrichment agent completed", { confidence: enrichment.confidence });
-
-  return { prospect: enrichedProspect, enrichment };
+  return { prospect, enrichment };
 }

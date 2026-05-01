@@ -15,7 +15,7 @@ async function seed() {
     name: "Prospection IA Standard",
     workflow_type: "prospecting",
     status: "active",
-    description: "Flux de prospection automatique : Nettoyage -> Enrichissement -> Qualification -> Rédaction -> QA",
+    description: "Flux de prospection automatique sans enrichissement LLM : Nettoyage déterministe -> Qualification -> Rédaction -> QA",
     config: {}
   });
 
@@ -30,17 +30,21 @@ async function seed() {
 
   // 3. Create Steps
   const steps = [
-    { name: "Nettoyage", slug: "extension_ops", order: 1 },
-    { name: "Enrichissement", slug: "enrichment", order: 2 },
-    { name: "Qualification", slug: "qualifier", order: 3 },
-    { name: "Rédaction", slug: "copywriter", order: 4 },
-    { name: "Contrôle Qualité", slug: "qa", order: 5 },
+    { name: "Qualification", slug: "qualifier", order: 1 },
+    { name: "Rédaction", slug: "copywriter", order: 2 },
+    { name: "Contrôle Qualité", slug: "qa", order: 3 },
   ];
 
   for (const step of steps) {
+    const agentId = agentMap[step.slug];
+    if (!agentId) {
+      console.error(`Missing agent id for step ${step.name} (${step.slug})`);
+      continue;
+    }
+
     const { error: stepErr } = await db.from("workflow_steps").insert({
       workflow_id: workflowId,
-      agent_id: agentMap[step.slug],
+      agent_id: agentId,
       step_order: step.order,
       name: step.name,
       input_status: "discovered",

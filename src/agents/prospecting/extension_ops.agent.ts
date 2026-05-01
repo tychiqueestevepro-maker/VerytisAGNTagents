@@ -8,26 +8,10 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { z }                from "zod";
-import { generateObject }   from "../../llm/generateObject.js";
 import { createLogger }     from "../../logs/logger.js";
 import type { Prospect }    from "../../schemas/prospect.schema.js";
 
 const log = createLogger("agent:extension-ops");
-
-// ── Output schema ─────────────────────────────────────────────────────────────
-
-const ExtensionOpsResultSchema = z.object({
-  first_name: z.string().describe("Cleaned first name"),
-  last_name:  z.string().describe("Cleaned last name"),
-  title:      z.string().describe("Cleaned job title (removed emojis, suffixes)"),
-  company:    z.string().describe("Normalized company name"),
-  /** Confidence score of the cleaning process */
-  confidence: z.number().min(0).max(1),
-  /** Flag if data was heavily corrected or seems suspicious */
-  is_flagged: z.boolean(),
-  notes:      z.string().nullable().describe("Notes sur le nettoyage (mettre null si aucune note)"),
-}).strict();
 
 export interface ExtensionOpsInput {
   raw_name:    string;
@@ -40,56 +24,94 @@ export interface ExtensionOpsOutput {
   prospect: Partial<Prospect>;
 }
 
-const SYSTEM_PROMPT = `
-Tu es un expert en nettoyage de données B2B spécialisé dans LinkedIn.
-Ton rôle est de prendre des données brutes extraites par une extension et de les nettoyer parfaitement.
+function normalizeSpace(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-Règles de nettoyage CRITIQUES :
-1. SÉPARATION : Sépare le nom complet en Prénom et Nom.
-2. TITRE : Nettoie le titre de poste pour être EXTRÊMEMENT CONCIS (ex: "Co-Founder & COO"). Supprime les phrases d'accroche (ex: "Transforming product management...", "Helping B2B..."), les emojis, les mentions de degré (ex: "• 2nd"), les "Open to Work". Ne garde QUE le rôle.
-3. PAS DE HALLUCINATION : Ne rajoute JAMAIS "Décideur" ou tout autre titre si ce n'est pas explicitement écrit dans les données brutes.
-4. JUNK DATA : Supprime les mentions de "Connexions mutuelles", "Followers", "Mutual connections" qui polluent souvent le nom ou le titre.
-5. SOCIÉTÉ : Normalise le nom de l'entreprise (enlève "Inc.", "SaaS", etc. si ce n'est pas essentiel).
-6. TEST : Si le nom contient des caractères spéciaux ou semble être un profil de test, mets is_flagged à true.
+function stripEmoji(value: string): string {
+  return value.replace(/[\u{1f300}-\u{1faff}\u{2600}-\u{27bf}\ufe0f]/gu, "");
+}
 
-Réponds UNIQUEMENT avec un JSON conforme au schéma demandé.
-`.trim();
+function stripLinkedInNoise(value: string): string {
+  return normalizeSpace(stripEmoji(value)
+    .replace(/\b(?:open\s+to\s+work|hiring|recrute|recrutement)\b/gi, "")
+    .replace(/\b\d+(?:st|nd|rd|th|er|e)\b/gi, "")
+    .replace(/\b(?:followers?|abonnés?|relations?|connections?|connexions?(?:\s+mutuelles?)?)\b/gi, "")
+    .replace(/[•·]+/g, " "));
+}
+
+function cleanProfileName(value: string): { first_name?: string; last_name?: string } {
+  const cleaned = stripLinkedInNoise(value)
+    .replace(/[|,].*$/g, "")
+    .replace(/\([^)]*\)/g, "")
+    .trim();
+
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return {};
+
+  return {
+    first_name: parts[0],
+    last_name: parts.length > 1 ? parts.slice(1).join(" ") : undefined,
+  };
+}
+
+function cleanTitle(value: string | null | undefined): string | undefined {
+  const cleaned = stripLinkedInNoise(value ?? "")
+    .replace(/\s+(?:chez|at|@)\s+.+$/i, "")
+    .trim();
+
+  if (!cleaned) return undefined;
+
+  const segments = cleaned
+    .split(/\s+(?:\||•|·|–|—)\s+|[\n\r]+/)
+    .map((segment) => normalizeSpace(segment))
+    .filter(Boolean);
+
+  const rolePattern = /\b(?:founder|co[-\s]?founder|fondateur|ceo|cto|coo|cfo|directeur|directrice|dirigeant|responsable|manager|head|lead|sales|marketing|consultant|avocat|associé|associe|partner|président|president|owner|gérant|gerant)\b/i;
+  return segments.find((segment) => rolePattern.test(segment)) ?? segments[0] ?? cleaned;
+}
+
+function cleanCompany(value: string | null | undefined): string | undefined {
+  const firstSegment = (value ?? "").split(/\n/)[0]?.split(/[•·|]/)[0] ?? "";
+  const cleaned = stripLinkedInNoise(firstSegment)
+    .replace(/\b(?:temps plein|full-time|part-time|freelance|indépendant|independant)\b/gi, "")
+    .trim();
+
+  if (!cleaned || cleaned.length < 2) return undefined;
+  if (/^(france|paris|lyon|marseille|remote|à distance|a distance)$/i.test(cleaned)) return undefined;
+  return normalizeSpace(cleaned);
+}
 
 /**
- * Runs the Extension Ops agent to clean raw extension data.
+ * Runs Extension Ops without LLM.
+ *
+ * The Chrome extension and import API already send normalized fields
+ * (first_name, last_name, title/headline, company, linkedin_url). This step is
+ * kept as a deterministic safety pass for old payloads and workflow
+ * compatibility, so it costs zero tokens and never invents missing data.
  */
 export async function runExtensionOpsAgent(
   input: ExtensionOpsInput
 ): Promise<ExtensionOpsOutput> {
   log.info("Extension Ops agent started", { raw_name: input.raw_name });
 
-  const userPrompt = `
-Nettoie les données suivantes extraites de LinkedIn :
+  const nameParts = cleanProfileName(input.raw_name);
+  const title = cleanTitle(input.raw_title);
+  const company = cleanCompany(input.raw_company);
+  const prospect: Partial<Prospect> = { ...nameParts };
 
-Nom Brut    : ${input.raw_name}
-Titre Brut  : ${input.raw_title ?? "non fourni"}
-Société Brut: ${input.raw_company ?? "non fournie"}
-URL Source  : ${input.source_url}
-`.trim();
+  if (title) prospect.title = title;
+  if (company) prospect.company = company;
 
-  const cleaned = await generateObject({
-    schema: ExtensionOpsResultSchema,
-    system: SYSTEM_PROMPT,
-    prompt: userPrompt,
-    model:  "gpt-4o-mini",
+  log.info("Extension Ops agent completed without LLM", {
+    has_first_name: Boolean(prospect.first_name),
+    has_last_name:  Boolean(prospect.last_name),
+    has_title:      Boolean(prospect.title),
+    has_company:    Boolean(prospect.company),
   });
 
-  log.info("Extension Ops agent completed", { 
-    confidence: cleaned.confidence,
-    is_flagged: cleaned.is_flagged 
-  });
-
-  return {
-    prospect: {
-      first_name: cleaned.first_name,
-      last_name:  cleaned.last_name,
-      title:      cleaned.title,
-      company:    cleaned.company,
-    }
-  };
+  return { prospect };
 }
