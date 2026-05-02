@@ -21,7 +21,15 @@ export const AgentRegistry: Record<string, Task<any, any>> = {
   qualifier: {
     name: "qualifier",
     run:  async (ctx, _config, meta) => {
-      return { qualification: await runQualifierAgent({ prospect: ctx.prospect, icp: ctx.config.icp }) };
+      return {
+        qualification: await runQualifierAgent({
+          prospect:             ctx.prospect,
+          icp:                  ctx.config.icp,
+          campaign_context:     ctx.campaign_context,
+          organization_context: ctx.organization_context,
+          raw_signals:          ctx.raw_signals,
+        }),
+      };
     },
   },
   // enrichment is intentionally not registered for automatic workflows.

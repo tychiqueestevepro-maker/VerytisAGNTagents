@@ -20,6 +20,8 @@ export { MessageSchema, MessageBundleSchema, OutreachChannelSchema } from "./sch
 
 // ── Services ─────────────────────────────────────────────────────────────────
 export { normaliseExtensionPayload } from "./services/extension.service.js";
+export { qualifyProspect }            from "./services/prospectQualification.service.js";
+export { preScoreProspect }           from "./services/prospectScoring.service.js";
 
 // ── Infrastructure ───────────────────────────────────────────────────────────
 export { createLogger }                                          from "./logs/logger.js";
@@ -46,3 +48,6 @@ export type { QAResult }                                         from "./agents/
 export type { CopywriterInput }                                  from "./agents/prospecting/copywriter.agent.js";
 export type { QualifierInput }                                   from "./agents/prospecting/qualifier.agent.js";
 export type { EnrichmentInput, EnrichmentOutput }                from "./agents/prospecting/enrichment.agent.js";
+export type { QualifyProspectInput, QualifyProspectOutput }      from "./services/prospectQualification.service.js";
+export type { PreScoreResult, PreScoreLevel }                    from "./services/prospectScoring.service.js";
+export type { ExtensionPayload, ExtensionRawPayload, NormalisedExtensionProspect } from "./services/extension.service.js";

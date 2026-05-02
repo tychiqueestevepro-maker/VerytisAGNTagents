@@ -28,6 +28,9 @@ const log = createLogger("orchestrator:prospecting");
 export interface ProspectingContext {
   prospect:      z.infer<typeof ProspectSchema>;
   config:        ProspectingConfig;
+  campaign_context?: Record<string, unknown>;
+  organization_context?: Record<string, unknown>;
+  raw_signals?: string[];
   enrichment?:   Record<string, unknown>;
   qualification?: QualificationResult;
   messageBundle?: MessageBundle;

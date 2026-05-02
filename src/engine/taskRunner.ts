@@ -154,6 +154,71 @@ async function auditLog(
   });
 }
 
+function qualificationLevelFromScore(score: number): "high" | "medium" | "low" {
+  if (score >= 80) return "high";
+  if (score >= 50) return "medium";
+  return "low";
+}
+
+type PersistableQualification = {
+  score: number;
+  qualified: boolean;
+  reasoning?: {
+    icp_match?: string;
+    title_relevance?: string;
+    company_fit?: string;
+    risk_flags?: string[];
+  };
+  matched_criteria?: string[];
+  unmatched_criteria?: string[];
+  recommended_action?: string;
+};
+
+function isQualificationResult(value: unknown): value is PersistableQualification {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.score === "number" && typeof candidate.qualified === "boolean";
+}
+
+function qualificationReason(qualification: PersistableQualification): string {
+  const reasoning = qualification.reasoning ?? {};
+  const parts = [
+    reasoning.icp_match,
+    reasoning.title_relevance,
+    reasoning.company_fit,
+    qualification.recommended_action ? `Action recommandee: ${qualification.recommended_action}` : "",
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.join(" | ").slice(0, 1000);
+}
+
+async function persistQualificationResult(
+  db: Db,
+  prospectId: string,
+  qualification: unknown
+): Promise<void> {
+  if (!isQualificationResult(qualification)) return;
+
+  const updateData: any = {
+    fit_score:             qualification.score,
+    qualification_status:  qualification.qualified ? "qualified" : "rejected",
+    qualification_level:   qualificationLevelFromScore(qualification.score),
+    qualification_reason:  qualificationReason(qualification),
+    confidence_score:      qualification.score,
+    status:                qualification.qualified ? "qualified" : "rejected",
+    updated_at:            new Date().toISOString(),
+  };
+
+  const { error } = await db.from("prospects").update(updateData).eq("id", prospectId);
+
+  if (error) {
+    log.warn("persistQualificationResult: prospect update failed", {
+      prospectId,
+      error: error.message,
+    });
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // runTask — point d'entrée public
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,6 +293,11 @@ export async function runTask<TInput, TOutput>(
     if (Object.keys(updateData).length > 0) {
       await db.from("prospects").update(updateData).eq("id", meta.prospectId);
     }
+  }
+
+  // ── 5c. Persist qualifier output on the prospect row ──────────────────────
+  if (finalTaskStatus === "completed" && meta.prospectId && outputRecord.qualification) {
+    await persistQualificationResult(db, meta.prospectId, outputRecord.qualification);
   }
 
   // ── 6. Audit : task.completed | task.failed ───────────────────────────────

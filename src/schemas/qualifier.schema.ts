@@ -22,6 +22,14 @@ export const QualificationResultSchema = z.object({
     risk_flags:      z.array(z.string()).describe("Any disqualifying signals"),
   }),
 
+  /** Useful business context extracted during qualification */
+  prospect_insights: z.object({
+    organization_mission: z.string().describe("Best-known mission or value proposition of the prospect's organization, or unknown if unavailable"),
+    organization_context: z.string().describe("Useful facts about the organization and market context"),
+    role_context:         z.string().describe("Why the prospect's role matters for this campaign"),
+    campaign_fit_summary: z.string().describe("Short explanation of fit against the campaign target"),
+  }),
+
   /** Which ICP criteria were met */
   matched_criteria: z.array(z.string()),
 

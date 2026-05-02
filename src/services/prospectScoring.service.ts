@@ -7,6 +7,7 @@ export interface PreScoreResult {
     role: boolean;
     industry: boolean;
     location: boolean;
+    companySize: boolean;
     company: boolean;
     url: boolean;
     targetDescriptionOverlap: boolean;
@@ -153,7 +154,7 @@ function objectToSearchableText(value: unknown, depth = 0): string {
   return "";
 }
 
-function preScoreLevelFromScore(score: number): PreScoreLevel {
+export function preScoreLevelFromScore(score: number): PreScoreLevel {
   if (score >= 70) return "high";
   if (score >= 40) return "medium";
   return "low";
@@ -166,18 +167,26 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
   const extraData = prospect.extra_data ?? {};
   const rawData = prospect.raw_data ?? extraData.raw_data ?? extraData;
   const company = Array.isArray(prospect.company) ? prospect.company[0] ?? {} : prospect.company ?? {};
+  const organization = rawData.organization ?? extraData.organization ?? {};
 
   const targetRoles = unique([
     ...toArray(campaign?.target_roles),
     ...toArray(config.target_roles),
+    ...toArray(config.icp_roles),
     ...toArray(config.personas),
     ...toArray(config.roles),
+    ...toArray(config.job_titles),
+    ...toArray(targetIcp.roles),
+    ...toArray(targetIcp.job_titles),
+    ...toArray(targetIcp.personas),
     pickString(prospection.decision_maker),
   ]);
 
   const targetIndustries = unique([
     ...toArray(campaign?.target_industries),
     ...toArray(config.target_industries),
+    ...toArray(config.icp_industries),
+    ...toArray(config.industries),
     ...toArray(targetIcp.industries),
     ...toArray(targetIcp.sectors),
     pickString(prospection.sector),
@@ -186,25 +195,88 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
   const targetLocations = unique([
     ...toArray(campaign?.target_locations),
     ...toArray(config.target_locations),
+    ...toArray(config.locations),
     ...toArray(targetIcp.locations),
     ...toArray(targetIcp.geographies),
     pickString(prospection.location),
   ]);
 
-  const targetDescription = pickString(campaign?.target_description, config.target_description, config.offer, campaign?.description);
+  const targetCompanySizes = unique([
+    ...toArray(campaign?.target_company_size),
+    ...toArray(config.target_company_size),
+    ...toArray(config.company_sizes),
+    ...toArray(targetIcp.company_size),
+    ...toArray(targetIcp.company_sizes),
+  ]);
+
+  const targetDescription = pickString(
+    campaign?.target_description,
+    config.target_description,
+    config.offer,
+    campaign?.objective,
+    campaign?.description
+  );
   const roleTitle = pickString(prospect.role_title, prospect.role, prospect.title, extraData.original_headline);
-  const companyName = pickString(prospect.company_name, prospect.company, company.name);
+  const companyName = pickString(
+    prospect.company_name,
+    prospect.company,
+    company.name,
+    rawData.company,
+    rawData.company_name,
+    rawData.companyName,
+    organization.name
+  );
   const companyDescription = pickString(
     prospect.company_description,
     company.description,
     extraData.company_description,
+    extraData.companyDescription,
     extraData.about,
     extraData.original_headline,
+    rawData.company_description,
+    rawData.companyDescription,
+    rawData.organizationDescription,
+    rawData.organization_description,
+    rawData.organizationMission,
+    organization.description,
+    organization.mission,
     prospect.role
   );
-  const location = pickString(prospect.location, company.location, extraData.location);
-  const profileUrl = pickString(prospect.profile_url, prospect.linkedin_url);
-  const websiteUrl = pickString(prospect.website_url, prospect.website);
+  const location = pickString(
+    prospect.location,
+    company.location,
+    extraData.location,
+    rawData.location,
+    rawData.profileLocation,
+    rawData.companyLocation,
+    rawData.organizationLocation,
+    organization.location
+  );
+  const companySize = pickString(
+    prospect.company_size,
+    prospect.company_size_range,
+    prospect.size_range,
+    company.size_range,
+    company.company_size,
+    extraData.company_size,
+    extraData.companySize,
+    extraData.size_range,
+    rawData.company_size,
+    rawData.companySize,
+    rawData.size_range,
+    organization.company_size,
+    organization.companySize
+  );
+  const profileUrl = pickString(prospect.profile_url, prospect.linkedin_url, rawData.profileUrl, rawData.profile_url);
+  const websiteUrl = pickString(
+    prospect.website_url,
+    prospect.website,
+    rawData.website_url,
+    rawData.companyWebsite,
+    rawData.website,
+    organization.website_url,
+    organization.website
+  );
   const rawText = [
     objectToSearchableText(rawData),
     objectToSearchableText(extraData),
@@ -214,6 +286,7 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
   const roleText = [roleTitle, rawText].join(" ");
   const industryText = [roleTitle, companyName, companyDescription, rawText].join(" ");
   const locationText = [location, rawText].join(" ");
+  const companySizeText = [companySize, rawText].join(" ");
   const fullProspectText = [prospect.decision_maker, roleTitle, companyName, companyDescription, location, rawText].join(" ");
 
   const targetDescriptionOverlap = Boolean(targetDescription)
@@ -231,12 +304,18 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
     ? matchesAnyCriterion(locationText, targetLocations)
     : Boolean(targetDescription && hasMeaningfulOverlap(locationText, targetDescription, 1));
 
-  const score =
+  const companySizeMatches = targetCompanySizes.length > 0
+    ? matchesAnyCriterion(companySizeText, targetCompanySizes)
+    : false;
+
+  const score = Math.min(100,
     (roleMatches ? 30 : 0) +
     (industryMatches ? 25 : 0) +
     (locationMatches ? 20 : 0) +
+    (companySizeMatches ? 10 : 0) +
     (companyName ? 15 : 0) +
-    (profileUrl || websiteUrl ? 10 : 0);
+    (profileUrl || websiteUrl ? 10 : 0)
+  );
 
   return {
     score,
@@ -245,6 +324,7 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
       role: roleMatches,
       industry: industryMatches,
       location: locationMatches,
+      companySize: companySizeMatches,
       company: Boolean(companyName),
       url: Boolean(profileUrl || websiteUrl),
       targetDescriptionOverlap,
