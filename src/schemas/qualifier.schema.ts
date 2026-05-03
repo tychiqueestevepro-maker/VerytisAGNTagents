@@ -28,6 +28,9 @@ export const QualificationResultSchema = z.object({
     organization_context: z.string().describe("Useful facts about the organization and market context"),
     role_context:         z.string().describe("Why the prospect's role matters for this campaign"),
     campaign_fit_summary: z.string().describe("Short explanation of fit against the campaign target"),
+    career_context:       z.string().describe("Useful facts about the prospect's tenure, recent hire signal, internal move, or relevant past experience"),
+    personalization_hooks: z.array(z.string()).describe("Specific, verified hooks that can be used to personalize outreach"),
+    suggested_opening:    z.string().describe("A short opening angle for outreach, based only on verified facts"),
   }),
 
   /** Which ICP criteria were met */

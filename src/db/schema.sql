@@ -189,21 +189,49 @@ CREATE TABLE public.daily_limits (
 CREATE TABLE public.extension_actions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   client_id uuid NOT NULL,
+  campaign_id uuid,
   prospect_id uuid,
   message_id uuid,
   action_type text NOT NULL,
   linkedin_url text,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'ready'::text, 'completed'::text, 'failed'::text, 'cancelled'::text])),
+  runner_type text NOT NULL DEFAULT 'cloud'::text CHECK (runner_type = ANY (ARRAY['extension'::text, 'cloud'::text])),
   requested_at timestamp with time zone NOT NULL DEFAULT now(),
+  scheduled_at timestamp with time zone NOT NULL DEFAULT now(),
+  locked_until timestamp with time zone,
+  attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  dedupe_key text UNIQUE,
+  runner_last_heartbeat_at timestamp with time zone,
   completed_at timestamp with time zone,
   error_message text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT extension_actions_pkey PRIMARY KEY (id),
   CONSTRAINT extension_actions_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id),
+  CONSTRAINT extension_actions_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.campaigns(id),
   CONSTRAINT extension_actions_prospect_id_fkey FOREIGN KEY (prospect_id) REFERENCES public.prospects(id),
   CONSTRAINT extension_actions_message_id_fkey FOREIGN KEY (message_id) REFERENCES public.messages(id)
+);
+
+CREATE TABLE public.linkedin_cloud_sessions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  client_id uuid NOT NULL UNIQUE,
+  integration_id uuid,
+  status text NOT NULL DEFAULT 'active'::text CHECK (status = ANY (ARRAY['active'::text, 'expired'::text, 'error'::text, 'revoked'::text])),
+  storage_state_ciphertext text NOT NULL,
+  storage_state_iv text NOT NULL,
+  storage_state_tag text NOT NULL,
+  linkedin_account_name text,
+  linkedin_account_url text,
+  last_verified_at timestamp with time zone,
+  error_message text,
+  extra_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT linkedin_cloud_sessions_pkey PRIMARY KEY (id),
+  CONSTRAINT linkedin_cloud_sessions_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id),
+  CONSTRAINT linkedin_cloud_sessions_integration_id_fkey FOREIGN KEY (integration_id) REFERENCES public.integrations(id)
 );
 
 CREATE TABLE public.integrations (

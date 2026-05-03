@@ -60,6 +60,10 @@ function pickString(...values: unknown[]): string {
   return "";
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
 function normalizeText(value: string): string {
   return value
     .normalize("NFD")
@@ -168,6 +172,14 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
   const rawData = prospect.raw_data ?? extraData.raw_data ?? extraData;
   const company = Array.isArray(prospect.company) ? prospect.company[0] ?? {} : prospect.company ?? {};
   const organization = rawData.organization ?? extraData.organization ?? {};
+  const currentExperience = asRecord(
+    prospect.currentExperience ??
+    prospect.current_experience ??
+    rawData.currentExperience ??
+    rawData.current_experience ??
+    extraData.currentExperience ??
+    extraData.current_experience
+  );
 
   const targetRoles = unique([
     ...toArray(campaign?.target_roles),
@@ -216,11 +228,12 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
     campaign?.objective,
     campaign?.description
   );
-  const roleTitle = pickString(prospect.role_title, prospect.role, prospect.title, extraData.original_headline);
+  const roleTitle = pickString(currentExperience.title, prospect.role_title, prospect.role, prospect.title, extraData.original_headline);
   const companyName = pickString(
     prospect.company_name,
     prospect.company,
     company.name,
+    currentExperience.company,
     rawData.company,
     rawData.company_name,
     rawData.companyName,
@@ -246,6 +259,7 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
     prospect.location,
     company.location,
     extraData.location,
+    currentExperience.location,
     rawData.location,
     rawData.profileLocation,
     rawData.companyLocation,

@@ -72,10 +72,25 @@ const SingleMessageResultSchema = z.object({ message: MessageSchema }).strict();
 
 export async function runCopywriterAgent(
   input: CopywriterInput,
-  _config?: Record<string, unknown>,
+  config?: Record<string, unknown>,
   meta?: WorkflowRunMeta
 ): Promise<MessageBundle> {
   const { prospect, qualification, channels } = input;
+
+  if (config?.personalized_message) {
+    log.info("Using pre-generated personalized message from config", {
+      prospect: `${prospect.first_name} ${prospect.last_name}`,
+    });
+    return MessageBundleSchema.parse({
+      prospect_ref: `${prospect.first_name}_${prospect.last_name}_${prospect.company}`,
+      messages: channels.map((channel) => ({
+        channel,
+        content: config.personalized_message as string,
+        subject: "",
+      })),
+      created_at: new Date().toISOString(),
+    });
+  }
 
   log.info("Copywriter agent started", {
     prospect: `${prospect.first_name} ${prospect.last_name}`,
@@ -109,8 +124,13 @@ Géographie : ${prospect.geography ?? "non précisée"}
 Score ICP  : ${qualification.score}/100
 Critères ✓ : ${qualification.matched_criteria.join(", ")}
 Contexte   : ${qualification.reasoning.icp_match}
+Parcours   : ${qualification.prospect_insights?.career_context ?? "inconnu"}
+Hooks      : ${qualification.prospect_insights?.personalization_hooks?.length ? qualification.prospect_insights.personalization_hooks.join(" | ") : "aucun hook vérifié"}
+Ouverture  : ${qualification.prospect_insights?.suggested_opening ?? "aucune"}
 
 Canal cible: ${channel}
+
+Si un hook de prise de poste récente est fourni, tu peux féliciter le prospect. Sinon, n'invente pas d'embauche ou de promotion.
 `.trim();
 
       const result = await generateObject({

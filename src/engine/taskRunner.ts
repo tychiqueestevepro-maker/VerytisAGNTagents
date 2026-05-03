@@ -33,6 +33,7 @@ export interface WorkflowRunMeta {
   prospectId?: string;
   companyId?:  string;
   workflowId?: string;
+  campaignId?: string;
 }
 
 /**
@@ -139,18 +140,21 @@ async function updateTaskResult(
 
 async function auditLog(
   db:         Db,
-  clientId:   string,
+  meta:       WorkflowRunMeta,
   action:     string,
-  entityId:   string,
   metadata:   Record<string, unknown>
 ): Promise<void> {
   await db.from("audit_logs").insert({
-    client_id:   clientId,
+    client_id:   meta.clientId,
     actor_type:  "agent",
     action,
-    entity_type: "task",
-    entity_id:   entityId,
-    metadata,
+    entity_type: meta.prospectId ? "prospect" : (meta.companyId ? "company" : "task"),
+    entity_id:   meta.prospectId || meta.companyId || null,
+    metadata: {
+      ...metadata,
+      campaign_id: meta.campaignId || null,
+      workflow_id: meta.workflowId || null,
+    },
   });
 }
 
@@ -169,6 +173,15 @@ type PersistableQualification = {
     company_fit?: string;
     risk_flags?: string[];
   };
+  prospect_insights?: {
+    organization_mission?: string;
+    organization_context?: string;
+    role_context?: string;
+    campaign_fit_summary?: string;
+    career_context?: string;
+    personalization_hooks?: string[];
+    suggested_opening?: string;
+  };
   matched_criteria?: string[];
   unmatched_criteria?: string[];
   recommended_action?: string;
@@ -182,10 +195,18 @@ function isQualificationResult(value: unknown): value is PersistableQualificatio
 
 function qualificationReason(qualification: PersistableQualification): string {
   const reasoning = qualification.reasoning ?? {};
+  const insights = qualification.prospect_insights ?? {};
+  const hooks = Array.isArray(insights.personalization_hooks)
+    ? insights.personalization_hooks.filter(Boolean).slice(0, 3)
+    : [];
   const parts = [
     reasoning.icp_match,
     reasoning.title_relevance,
     reasoning.company_fit,
+    insights.campaign_fit_summary,
+    insights.career_context && insights.career_context !== "inconnu" ? `Parcours: ${insights.career_context}` : "",
+    hooks.length ? `Hooks message: ${hooks.join("; ")}` : "",
+    insights.suggested_opening ? `Ouverture suggeree: ${insights.suggested_opening}` : "",
     qualification.recommended_action ? `Action recommandee: ${qualification.recommended_action}` : "",
   ].filter((part): part is string => Boolean(part));
 
@@ -245,7 +266,8 @@ export async function runTask<TInput, TOutput>(
   await markTaskRunning(db, taskId);
 
   // ── 3. Audit : task.started ───────────────────────────────────────────────
-  await auditLog(db, meta.clientId, `task.${task.name}.started`, taskId, {
+  await auditLog(db, meta, `task.${task.name}.started`, {
+    task_id:          taskId,
     agent_slug:       step.agentSlug,
     workflow_step_id: step.workflowStepId ?? null,
     run_type:         step.runType,
@@ -253,6 +275,33 @@ export async function runTask<TInput, TOutput>(
   });
 
   // ── 4. startRun → agent_run + exécution + output/error + duration ─────────
+  
+  // Enrich config with personalized message if available for this prospect and step
+  let finalConfig = { ...step.config };
+  if (meta.prospectId && step.workflowStepId) {
+    try {
+      const { data: prospect } = await db
+        .from("prospects")
+        .select("extra_data")
+        .eq("id", meta.prospectId)
+        .single();
+        
+      const personalizedSequence = prospect?.extra_data?.personalized_sequence as any;
+      if (personalizedSequence && Array.isArray(personalizedSequence.steps)) {
+        const personalizedStep = personalizedSequence.steps.find((s: any) => s.step_id === step.workflowStepId);
+        if (personalizedStep?.personalized_message) {
+          log.info("Personalized message found for this prospect and step", {
+            prospectId: meta.prospectId,
+            stepId: step.workflowStepId
+          });
+          finalConfig.personalized_message = personalizedStep.personalized_message;
+        }
+      }
+    } catch (err) {
+      log.warn("Failed to fetch personalized message for prospect", { error: err });
+    }
+  }
+
   const agentRunResult = await startRun<TOutput>(
     {
       clientId:        meta.clientId,
@@ -264,7 +313,7 @@ export async function runTask<TInput, TOutput>(
       runType:         step.runType,
       input:           input as Record<string, unknown>,
     },
-    (_runId) => task.run(input, step.config, meta)
+    (_runId) => task.run(input, finalConfig, meta)
   );
 
   const duration_ms = Date.now() - globalStart;
@@ -301,7 +350,8 @@ export async function runTask<TInput, TOutput>(
   }
 
   // ── 6. Audit : task.completed | task.failed ───────────────────────────────
-  await auditLog(db, meta.clientId, `task.${task.name}.${finalTaskStatus}`, taskId, {
+  await auditLog(db, meta, `task.${task.name}.${finalTaskStatus}`, {
+    task_id:        taskId,
     run_id:         agentRunResult.runId,
     duration_ms,
     success_status: step.successStatus,

@@ -6,7 +6,9 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "worker": "tsx src/worker.ts"
+    "worker": "tsx src/worker.ts",
+    "linkedin:login": "tsx src/scripts/linkedin-session-capture.ts",
+    "linkedin:runner": "tsx src/scripts/linkedin-cloud-runner.ts"
   },
   "repository": {
     "type": "git",
@@ -25,11 +27,12 @@
     "@supabase/supabase-js": "^2.104.1",
     "ai": "^6.0.168",
     "dotenv": "^17.4.2",
+    "playwright": "^1.59.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "typescript": "^6.0.3",
-    "tsx": "^4.19.1"
+    "tsx": "^4.19.1",
+    "typescript": "^6.0.3"
   }
 }

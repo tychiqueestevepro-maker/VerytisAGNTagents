@@ -22,6 +22,7 @@ export { MessageSchema, MessageBundleSchema, OutreachChannelSchema } from "./sch
 export { normaliseExtensionPayload } from "./services/extension.service.js";
 export { qualifyProspect }            from "./services/prospectQualification.service.js";
 export { preScoreProspect }           from "./services/prospectScoring.service.js";
+export { processOneLinkedInCloudAction, startLinkedInCloudRunner } from "./services/linkedinCloudRunner.service.js";
 
 // ── Infrastructure ───────────────────────────────────────────────────────────
 export { createLogger }                                          from "./logs/logger.js";

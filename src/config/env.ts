@@ -23,6 +23,13 @@ const EnvSchema = z.object({
   WHATSAPP_API_URL:   z.string().url().optional(),
   WHATSAPP_API_TOKEN: z.string().min(1).optional(),
 
+  // ── LinkedIn cloud runner ─────────────────────────────────────────────────
+  LINKEDIN_SESSION_SECRET: z.string().min(16).optional(),
+  LINKEDIN_RUNNER_DAILY_LIMIT: z.coerce.number().int().min(1).default(30),
+  LINKEDIN_RUNNER_DELAY_OPTIONS_MINUTES: z.string().default("5,10,15"),
+  LINKEDIN_RUNNER_POLL_MS: z.coerce.number().int().min(5000).default(30000),
+  LINKEDIN_RUNNER_HEADLESS: z.enum(["true", "false"]).default("true"),
+
   // ── Agent UUIDs (depuis la table `agents` après seed) ─────────────────────
   AGENT_ID_ENRICHMENT: z.string().uuid().optional(),
   AGENT_ID_QUALIFIER:  z.string().uuid().optional(),

@@ -201,3 +201,75 @@ export function normaliseExtensionPayload(
 
   return normalised;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reply Handling
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ExtensionReplyPayloadSchema = z.object({
+  client_id: z.string().uuid(),
+  linkedin_url: z.string().url(),
+  message_content: z.string().optional(),
+});
+
+/**
+ * Handles a "reply detected" event from the extension.
+ * Updates the prospect status to 'replied' so the workflow runner stops.
+ */
+export async function handleExtensionReply(
+  raw: unknown
+): Promise<{ success: boolean; prospectId?: string; decision_maker?: string }> {
+  const parsed = ExtensionReplyPayloadSchema.safeParse(raw);
+
+  if (!parsed.success) {
+    log.warn("Extension reply payload validation failed", {
+      issues: parsed.error.issues.map((i) => i.message),
+    });
+    return { success: false };
+  }
+
+  const { client_id, linkedin_url, message_content } = parsed.data;
+  const { getDb } = await import("../db/supabase.js");
+  const db = getDb();
+
+  // 1. Find the prospect
+  const { data: prospect, error: fetchErr } = await db
+    .from("prospects")
+    .select("id, decision_maker, campaign_id")
+    .eq("client_id", client_id)
+    .eq("linkedin_url", linkedin_url)
+    .maybeSingle();
+
+  if (fetchErr || !prospect) {
+    log.warn("Received reply for unknown prospect", { client_id, linkedin_url });
+    return { success: false };
+  }
+
+  // 2. Mark as replied
+  const { error: updateErr } = await db
+    .from("prospects")
+    .update({
+      status: "replied",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", prospect.id);
+
+  if (updateErr) {
+    log.error("Failed to update prospect status on reply", {
+      prospectId: prospect.id,
+      error: updateErr.message,
+    });
+    return { success: false };
+  }
+
+  log.info("Prospect marked as replied via extension", {
+    prospectId: prospect.id,
+    decision_maker: prospect.decision_maker,
+  });
+
+  return {
+    success: true,
+    prospectId: prospect.id,
+    decision_maker: prospect.decision_maker || undefined
+  };
+}

@@ -30,6 +30,7 @@ export interface ProspectingContext {
   config:        ProspectingConfig;
   campaign_context?: Record<string, unknown>;
   organization_context?: Record<string, unknown>;
+  experience_context?: Record<string, unknown>;
   raw_signals?: string[];
   enrichment?:   Record<string, unknown>;
   qualification?: QualificationResult;

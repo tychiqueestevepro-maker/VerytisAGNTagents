@@ -27,8 +27,15 @@ import { AgentRegistry } from "../agents/registry.js";
 const log = createLogger("engine:workflowRunner");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Types
+// Types & Roadmap
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * ROADMAP NOTE: Server-Side Sync
+ * Currently, reply detection is handled by the browser extension (Ghost Monitoring).
+ * Future implementation should move this to a dedicated headless service (Server-Side)
+ * to ensure 24/7 autonomous sequence halting even when the user browser is closed.
+ */
 
 /**
  * Une étape de workflow = données (StepDefinition) + logique (Task) + skip.
@@ -90,6 +97,26 @@ export async function runWorkflow<TCtx extends object>(
 
   for (const step of workflow.steps) {
     const stepName = step.task.name;
+
+    // ── Stop if prospect replied ──────────────────────────────────────────
+    if (meta.prospectId) {
+      const db = getDb();
+      const { data: prospect } = await db
+        .from("prospects")
+        .select("status, qualification_status")
+        .eq("id", meta.prospectId)
+        .single();
+      
+      if (prospect?.status === "replied" || prospect?.qualification_status === "replied") {
+        log.info(`Stopping workflow: prospect has replied`, { prospectId: meta.prospectId });
+        return {
+          workflowName: workflow.name,
+          status:       "completed", // It's a successful termination
+          finalContext: ctx,
+          stepResults,
+        };
+      }
+    }
 
     // ── Skip gate ─────────────────────────────────────────────────────────
     if (step.skip?.(ctx)) {
@@ -177,12 +204,18 @@ export async function runWorkflowFromDb<TCtx extends object>(
   // 1. Charger le workflow
   const { data: workflow, error: wfErr } = await db
     .from("workflows")
-    .select("*")
+    .select("*, campaigns(id)")
     .eq("id", meta.workflowId)
     .single();
 
   if (wfErr || !workflow) {
     throw new Error(`Workflow not found: ${meta.workflowId} (${wfErr?.message})`);
+  }
+
+  // Enrich meta with campaignId if available
+  const campaignId = (workflow as any).campaigns?.[0]?.id;
+  if (campaignId && !meta.campaignId) {
+    meta.campaignId = campaignId;
   }
 
   // 2. Charger les steps actifs
@@ -200,14 +233,14 @@ export async function runWorkflowFromDb<TCtx extends object>(
     throw new Error(`Failed to load workflow steps: ${stepsErr?.message}`);
   }
 
-  log.info(`Workflow from DB starting: ${workflow.name}`, {
+  log.info(`Workflow from DB starting: ${(workflow as any).name}`, {
     workflowId: meta.workflowId,
     steps:      steps.length,
   });
 
   // 3. Mapper vers WorkflowDefinition
   const workflowDef: WorkflowDefinition<TCtx> = {
-    name: workflow.name,
+    name: (workflow as any).name,
     steps: steps.map((s: any) => {
       const agent = s.agents;
       const task = AgentRegistry[agent.slug];

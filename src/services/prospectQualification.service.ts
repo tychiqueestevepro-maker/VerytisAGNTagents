@@ -142,6 +142,7 @@ function camelKey(value: string): string {
 function rawStringAny(raw: Record<string, unknown>, ...keys: string[]): string {
   const extraData = asRecord(raw.extra_data);
   const organization = asRecord(raw.organization ?? extraData.organization);
+  const currentExperience = asRecord(raw.currentExperience ?? raw.current_experience ?? extraData.currentExperience ?? extraData.current_experience);
   const values: unknown[] = [];
 
   for (const key of keys) {
@@ -152,11 +153,47 @@ function rawStringAny(raw: Record<string, unknown>, ...keys: string[]): string {
       extraData[key],
       extraData[camel],
       organization[key],
-      organization[camel]
+      organization[camel],
+      currentExperience[key],
+      currentExperience[camel]
     );
   }
 
   return pickString(...values);
+}
+
+function rawValueAny(raw: Record<string, unknown>, ...keys: string[]): unknown {
+  const extraData = asRecord(raw.extra_data);
+  const organization = asRecord(raw.organization ?? extraData.organization);
+  const currentExperience = asRecord(raw.currentExperience ?? raw.current_experience ?? extraData.currentExperience ?? extraData.current_experience);
+
+  for (const key of keys) {
+    const camel = camelKey(key);
+    const values = [
+      raw[key],
+      raw[camel],
+      extraData[key],
+      extraData[camel],
+      organization[key],
+      organization[camel],
+      currentExperience[key],
+      currentExperience[camel],
+    ];
+    const found = values.find((value) => {
+      if (Array.isArray(value)) return value.length > 0;
+      if (isRecord(value)) return Object.keys(value).length > 0;
+      if (typeof value === "string") return Boolean(value.trim());
+      return value !== null && value !== undefined;
+    });
+    if (found !== undefined) return found;
+  }
+
+  return undefined;
+}
+
+function rawArrayAny(raw: Record<string, unknown>, ...keys: string[]): unknown[] {
+  const value = rawValueAny(raw, ...keys);
+  return Array.isArray(value) ? value : [];
 }
 
 function rawString(raw: Record<string, unknown>, key: string): string {
@@ -188,6 +225,8 @@ function buildRawSignals(prospect: ProspectRow): string[] {
     rawStringAny(raw, "headline", "original_headline"),
     rawStringAny(raw, "raw_result_text"),
     rawStringAny(raw, "company_description", "organization_description", "organization_mission", "description", "mission"),
+    ...toArray(rawValueAny(raw, "experience_highlights", "experienceHighlights")),
+    ...toArray(rawValueAny(raw, "personalization_signals", "personalizationSignals")),
   ]).map((signal) => signal.slice(0, 800));
 }
 
@@ -332,6 +371,31 @@ function organizationContext(prospect: ProspectRow): ProspectingContext["organiz
       rawStringAny(raw, "company_linkedin_url", "organization_linkedin_url", "linkedin_url", "profile_url")
     ),
     mission_hint:  pickString(rawStringAny(raw, "mission", "organization_mission", "about"), rawStringAny(raw, "headline")),
+  };
+}
+
+function experienceContext(prospect: ProspectRow): ProspectingContext["experience_context"] {
+  const raw = rawBundle(prospect);
+  const currentExperience = asRecord(rawValueAny(raw, "current_experience", "currentExperience"));
+  const experienceHighlights = toArray(rawValueAny(raw, "experience_highlights", "experienceHighlights"));
+  const personalizationSignals = toArray(rawValueAny(raw, "personalization_signals", "personalizationSignals"));
+
+  return {
+    current_experience: currentExperience,
+    experiences: rawArrayAny(raw, "experiences"),
+    experience_highlights: experienceHighlights,
+    personalization_signals: personalizationSignals,
+    current_role_start: pickString(
+      rawStringAny(raw, "current_role_start", "currentRoleStart"),
+      currentExperience.start
+    ),
+    current_role_duration: pickString(
+      rawStringAny(raw, "current_role_duration", "currentRoleDuration"),
+      currentExperience.duration
+    ),
+    current_role_is_recent: rawValueAny(raw, "current_role_is_recent", "currentRoleIsRecent") === true
+      || rawValueAny(raw, "current_role_is_recent", "currentRoleIsRecent") === "true"
+      || currentExperience.isRecent === true,
   };
 }
 
@@ -570,6 +634,7 @@ export async function qualifyProspect(
     config,
     campaign_context:     campaignContext(campaign),
     organization_context: organizationContext(prospect),
+    experience_context:   experienceContext(prospect),
     raw_signals:          buildRawSignals(prospect),
   };
 

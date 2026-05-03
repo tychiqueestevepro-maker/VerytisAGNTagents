@@ -280,7 +280,7 @@ export interface Database {
           source: string | null;
           source_url: string | null;
           raw_data: Record<string, unknown>;
-          qualification_status: "collected" | "pre_scored" | "to_qualify" | "qualified" | "rejected";
+          qualification_status: "collected" | "pre_scored" | "to_qualify" | "qualified" | "rejected" | "replied";
           qualification_level: "high" | "medium" | "low" | null;
           qualification_reason: string | null;
           suggested_message: string | null;
@@ -317,7 +317,7 @@ export interface Database {
           source?: string | null;
           source_url?: string | null;
           raw_data?: Record<string, unknown>;
-          qualification_status?: "collected" | "pre_scored" | "to_qualify" | "qualified" | "rejected";
+          qualification_status?: "collected" | "pre_scored" | "to_qualify" | "qualified" | "rejected" | "replied";
           qualification_level?: "high" | "medium" | "low" | null;
           qualification_reason?: string | null;
           suggested_message?: string | null;
