@@ -18,6 +18,7 @@ const log = createLogger("service:linkedin-cloud-runner");
 
 const CONTACT_ACTION_TYPES = ["connect", "connect_with_message", "send_message"];
 const LOCK_MINUTES = 10;
+const SESSION_VERIFY_INTERVAL_MS = 2 * 60 * 60 * 1000;
 
 type LinkedInAction = {
   id: string;
@@ -268,6 +269,19 @@ async function ensureLoggedIn(page: Page) {
   }
 }
 
+async function ensureLinkedInSessionActive(page: Page) {
+  await ensureLoggedIn(page);
+
+  const loggedInSignal = page
+    .locator('.global-nav__me, .global-nav__me-photo, a[href*="/messaging"], a[href*="/feed/"]')
+    .first();
+
+  const isVisible = await loggedInSignal.isVisible({ timeout: 5000 }).catch(() => false);
+  if (!isVisible) {
+    throw new Error("LinkedIn cloud session expired");
+  }
+}
+
 async function gotoLinkedInProfile(page: Page, url: string) {
   if (!url.includes("linkedin.com/")) throw new Error("URL LinkedIn invalide");
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -433,6 +447,102 @@ async function createBrowserContext(clientId: string) {
   });
 
   return { browser, context };
+}
+
+async function fetchSessionDueForVerification() {
+  const staleBefore = new Date(Date.now() - SESSION_VERIFY_INTERVAL_MS).toISOString();
+  const { data, error } = await db()
+    .from("linkedin_cloud_sessions")
+    .select("client_id, last_verified_at")
+    .eq("status", "active")
+    .or(`last_verified_at.is.null,last_verified_at.lt.${staleBefore}`)
+    .order("last_verified_at", { ascending: true, nullsFirst: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as { client_id: string; last_verified_at: string | null } | null;
+}
+
+async function updateIntegrationVerification(clientId: string, status: "connected" | "error", now: string, errorMessage?: string) {
+  const { data: integration } = await db()
+    .from("integrations")
+    .select("id, extra_data")
+    .eq("client_id", clientId)
+    .eq("integration_type", "chrome_extension")
+    .maybeSingle();
+
+  if (!integration) return;
+
+  await db()
+    .from("integrations")
+    .update({
+      status,
+      last_sync_at: now,
+      extra_data: {
+        ...((integration.extra_data as Record<string, unknown> | null) || {}),
+        runner_type: "cloud",
+        runner_mode: "cloud",
+        cloud_session_status: status === "connected" ? "active" : "error",
+        cloud_session_last_checked_at: now,
+        ...(errorMessage ? { cloud_session_error: errorMessage } : { cloud_session_error: null }),
+      },
+      updated_at: now,
+    })
+    .eq("id", integration.id);
+}
+
+async function markSessionVerified(clientId: string) {
+  const now = new Date().toISOString();
+
+  await db()
+    .from("linkedin_cloud_sessions")
+    .update({
+      status: "active",
+      last_verified_at: now,
+      error_message: null,
+      updated_at: now,
+    })
+    .eq("client_id", clientId);
+
+  await updateIntegrationVerification(clientId, "connected", now);
+}
+
+async function verifyOneLinkedInCloudSession() {
+  const session = await fetchSessionDueForVerification();
+  if (!session) return false;
+
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
+
+  try {
+    const sessionContext = await createBrowserContext(session.client_id);
+    if (!sessionContext) return false;
+
+    browser = sessionContext.browser;
+    context = sessionContext.context;
+
+    const page = await context.newPage();
+    await page.goto("https://www.linkedin.com/feed/", { waitUntil: "domcontentloaded", timeout: 45000 });
+    await ensureLinkedInSessionActive(page);
+    await markSessionVerified(session.client_id);
+
+    log.info("LinkedIn cloud session verified", { clientId: session.client_id });
+    return true;
+  } catch (error: any) {
+    const errorMessage = error?.message || "LinkedIn cloud session verification failed";
+    await markLinkedInCloudSessionError(session.client_id, errorMessage);
+    await updateIntegrationVerification(session.client_id, "error", new Date().toISOString(), errorMessage);
+
+    log.warn("LinkedIn cloud session verification failed", {
+      clientId: session.client_id,
+      error: errorMessage,
+    });
+    return true;
+  } finally {
+    await context?.close().catch(() => undefined);
+    await browser?.close().catch(() => undefined);
+  }
 }
 
 async function markActionCompleted(action: LinkedInAction, details: Record<string, unknown>) {
@@ -616,6 +726,7 @@ export async function startLinkedInCloudRunner() {
 
   while (true) {
     try {
+      await verifyOneLinkedInCloudSession();
       const result = await processOneLinkedInCloudAction();
       const delayMs = result.processed ? result.delayMs : env.LINKEDIN_RUNNER_POLL_MS;
       await new Promise((resolve) => setTimeout(resolve, delayMs));
