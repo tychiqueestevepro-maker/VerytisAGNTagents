@@ -8,7 +8,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "worker": "tsx src/worker.ts",
     "linkedin:login": "tsx src/scripts/linkedin-session-capture.ts",
-    "linkedin:runner": "tsx src/scripts/linkedin-cloud-runner.ts"
+    "linkedin:runner": "tsx src/scripts/linkedin-cloud-runner.ts",
+    "postinstall": "playwright install --with-deps chromium"
   },
   "repository": {
     "type": "git",

@@ -531,13 +531,27 @@ async function verifyOneLinkedInCloudSession() {
     return true;
   } catch (error: any) {
     const errorMessage = error?.message || "LinkedIn cloud session verification failed";
-    await markLinkedInCloudSessionError(session.client_id, errorMessage);
-    await updateIntegrationVerification(session.client_id, "error", new Date().toISOString(), errorMessage);
+    
+    // Check if it's a system/launch error or a real session error
+    const isLaunchError = errorMessage.includes("browserType.launch") || 
+                         errorMessage.includes("executable") ||
+                         errorMessage.includes("libglib") ||
+                         errorMessage.includes("shared libraries");
 
-    log.warn("LinkedIn cloud session verification failed", {
-      clientId: session.client_id,
-      error: errorMessage,
-    });
+    if (isLaunchError) {
+      log.error("SYSTEM ERROR: Browser failed to launch on cloud runner. NOT marking session as invalid.", {
+        clientId: session.client_id,
+        error: errorMessage,
+      });
+    } else {
+      await markLinkedInCloudSessionError(session.client_id, errorMessage);
+      await updateIntegrationVerification(session.client_id, "error", new Date().toISOString(), errorMessage);
+
+      log.warn("LinkedIn cloud session verification failed", {
+        clientId: session.client_id,
+        error: errorMessage,
+      });
+    }
     return true;
   } finally {
     await context?.close().catch(() => undefined);
@@ -693,10 +707,24 @@ export async function processOneLinkedInCloudAction(): Promise<ProcessResult> {
     };
   } catch (error: any) {
     const errorMessage = error?.message || "LinkedIn cloud action failed";
-    await markActionFailed(action, errorMessage);
+    
+    // Check if it's a system/launch error or a real session error
+    const isLaunchError = errorMessage.includes("browserType.launch") || 
+                         errorMessage.includes("executable") ||
+                         errorMessage.includes("libglib") ||
+                         errorMessage.includes("shared libraries");
 
-    if (errorMessage.includes("session expired")) {
-      await markLinkedInCloudSessionError(action.client_id, errorMessage);
+    if (isLaunchError) {
+      log.error("SYSTEM ERROR: Browser failed to launch for action. NOT marking session as invalid.", {
+        actionId: action.id,
+        clientId: action.client_id,
+        error: errorMessage,
+      });
+    } else {
+      await markActionFailed(action, errorMessage);
+      if (errorMessage.includes("session expired")) {
+        await markLinkedInCloudSessionError(action.client_id, errorMessage);
+      }
     }
 
     log.error("LinkedIn cloud action failed", {
