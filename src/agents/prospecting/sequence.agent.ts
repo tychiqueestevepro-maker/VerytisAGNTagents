@@ -8,6 +8,10 @@
 import { z } from "zod";
 import { generateObject } from "../../llm/generateObject.js";
 import { createLogger } from "../../logs/logger.js";
+import {
+  playbookPromptSummary,
+  type ProspectionPlaybook,
+} from "../../services/prospectingPlaybook.service.js";
 
 const log = createLogger("agent:sequence");
 
@@ -40,6 +44,7 @@ export interface SequenceAgentInput {
   target_industries: string[];
   tone: string;
   brand_context?: string;
+  prospection_playbook?: ProspectionPlaybook;
 }
 
 // ── System prompt ─────────────────────────────────────────────────────────────
@@ -57,6 +62,7 @@ CONTEXTE DE LA CAMPAGNE :
 - Industries : ${input.target_industries.join(", ")}
 - Ton : ${input.tone}
 ${input.brand_context ? `- Contexte de marque : ${input.brand_context}` : ""}
+- Playbook métier : ${input.prospection_playbook ? playbookPromptSummary(input.prospection_playbook) : "aucun playbook fourni"}
 
 CONSIGNES POUR LA SÉQUENCE :
 1. La séquence doit être progressive et naturelle.

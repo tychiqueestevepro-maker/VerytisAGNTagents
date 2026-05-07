@@ -19,6 +19,10 @@ import { z }              from "zod";
 import { generateObject } from "../../llm/generateObject.js";
 import { createLogger }   from "../../logs/logger.js";
 import type { MessageBundle } from "../../schemas/message.schema.js";
+import {
+  playbookPromptSummary,
+  type ProspectionPlaybook,
+} from "../../services/prospectingPlaybook.service.js";
 
 const log = createLogger("agent:qa");
 
@@ -65,7 +69,7 @@ Seuil d'approbation : qualité globale ≥ 75, score personnalisation ≥ 60, co
 Réponds UNIQUEMENT avec un JSON conforme au schéma demandé.
 `.trim();
 
-export async function runQAAgent(bundle: MessageBundle): Promise<QAResult> {
+export async function runQAAgent(bundle: MessageBundle, playbook?: ProspectionPlaybook): Promise<QAResult> {
   log.info("QA agent started", { messages: bundle.messages.length });
 
   // Build a structured representation of the bundle for the LLM
@@ -85,6 +89,8 @@ Effectue un contrôle qualité complet de ces messages d'outreach :
 ${bundleDescription}
 
 Prospect référence : ${bundle.prospect_ref}
+Playbook métier à respecter :
+${playbook ? playbookPromptSummary(playbook) : "aucun playbook fourni"}
 `.trim();
 
   const result = await generateObject({

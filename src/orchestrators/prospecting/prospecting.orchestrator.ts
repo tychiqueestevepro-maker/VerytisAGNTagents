@@ -18,6 +18,8 @@ import { ProspectSchema }   from "../../schemas/prospect.schema.js";
 import type { QualificationResult } from "../../schemas/qualifier.schema.js";
 import type { MessageBundle }  from "../../schemas/message.schema.js";
 import type { QAResult }    from "../../agents/prospecting/qa.agent.js";
+import { ProspectionPlaybookSchema } from "../../services/prospectingPlaybook.service.js";
+import { getRecentSerpQualificationContext } from "../../services/recentSerpQualification.service.js";
 
 const log = createLogger("orchestrator:prospecting");
 
@@ -32,6 +34,7 @@ export interface ProspectingContext {
   organization_context?: Record<string, unknown>;
   experience_context?: Record<string, unknown>;
   raw_signals?: string[];
+  recent_serp_sources?: unknown[];
   enrichment?:   Record<string, unknown>;
   qualification?: QualificationResult;
   messageBundle?: MessageBundle;
@@ -52,8 +55,9 @@ const ProspectingConfigSchema = z.object({
   }),
   channels:      z.array(z.enum(["email", "linkedin", "sms"])).min(1),
   tone:          z.enum(["formal", "conversational", "technical"]).default("conversational"),
-  language:      z.string().length(2).default("fr"),
+  language:      z.string().min(2).default("fr"),
   brand_context: z.string().min(10),
+  prospection_playbook: z.preprocess((value) => value ?? {}, ProspectionPlaybookSchema),
 });
 
 export type ProspectingConfig = z.infer<typeof ProspectingConfigSchema>;
@@ -131,9 +135,27 @@ export async function runProspectingOrchestrator(
   }
 
   // 2. Contexte initial
+  // 2a. Récupérer le contexte SERP récent (actualités, recrutements, etc.)
+  const recentSerp = await getRecentSerpQualificationContext({
+    prospect: {
+      fullName:    input.prospect.full_name || input.prospect.decision_maker || undefined,
+      roleTitle:   input.prospect.role_title || input.prospect.role || undefined,
+      companyName: input.prospect.company_name || input.prospect.company || undefined,
+      location:    input.prospect.location || undefined,
+    },
+    campaign: {
+      objective:         input.config.brand_context, // Use brand_context or objective if available
+      targetDescription: input.config.icp.job_titles.join(", "),
+      targetIndustries:  input.config.icp.industries,
+      targetLocations:   input.config.icp.geographies,
+    },
+  });
+
   const initialCtx: ProspectingContext = {
-    prospect: input.prospect,
-    config:   input.config,
+    prospect:            input.prospect,
+    config:              input.config,
+    recent_serp_sources: recentSerp.sources,
+    raw_signals:         recentSerp.used ? [`[SERP Context] ${recentSerp.sources.map(s => s.title).join(" | ")}`] : [],
   };
 
   // 3. Lancer le workflow depuis la DB

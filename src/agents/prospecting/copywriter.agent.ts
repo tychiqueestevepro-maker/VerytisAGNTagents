@@ -21,6 +21,10 @@ import {
 } from "../../schemas/message.schema.js";
 import { AgentMemoryService } from "../../services/agentMemory.service.js";
 import type { WorkflowRunMeta } from "../../engine/taskRunner.js";
+import {
+  playbookPromptSummary,
+  type ProspectionPlaybook,
+} from "../../services/prospectingPlaybook.service.js";
 
 const log = createLogger("agent:copywriter");
 
@@ -33,6 +37,7 @@ export interface CopywriterInput {
   tone:            "formal" | "conversational" | "technical";
   language:        string;
   brand_context:   string;
+  prospection_playbook?: ProspectionPlaybook;
 }
 
 // ── System prompt ─────────────────────────────────────────────────────────────
@@ -49,6 +54,7 @@ Ton objectif : rédiger des messages d'outreach qui génèrent des réponses, pa
 Contexte de marque : ${input.brand_context}
 Ton de communication : ${input.tone}
 Langue : ${input.language}
+Playbook métier : ${input.prospection_playbook ? playbookPromptSummary(input.prospection_playbook) : "aucun playbook fourni"}
 ${memoryContext}
 
 Règles absolues :
@@ -58,6 +64,7 @@ Règles absolues :
 - Email/LinkedIn : max 150 mots.
 - Commence toujours par le prénom du prospect.
 - La valeur d'abord, la vente ensuite.
+- Respecte l'angle, les interdits, le CTA et la maniere d'operer definis dans le playbook métier.
 
 Réponds UNIQUEMENT avec un JSON conforme au schéma demandé.
 `.trim();
@@ -127,6 +134,9 @@ Contexte   : ${qualification.reasoning.icp_match}
 Parcours   : ${qualification.prospect_insights?.career_context ?? "inconnu"}
 Hooks      : ${qualification.prospect_insights?.personalization_hooks?.length ? qualification.prospect_insights.personalization_hooks.join(" | ") : "aucun hook vérifié"}
 Ouverture  : ${qualification.prospect_insights?.suggested_opening ?? "aucune"}
+Angle playbook : ${input.prospection_playbook?.message_strategy.angle ?? "non fourni"}
+CTA playbook   : ${input.prospection_playbook?.message_strategy.cta ?? "non fourni"}
+À éviter       : ${input.prospection_playbook?.message_strategy.avoid.join(", ") ?? "non fourni"}
 
 Canal cible: ${channel}
 

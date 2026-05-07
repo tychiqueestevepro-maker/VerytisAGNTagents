@@ -6,9 +6,9 @@ dotenv.config();
 async function main() {
   console.log('Testing SERP People Search...\n');
   
-  if (!process.env.SERP_API_KEY) {
-    console.error('⚠️ SERP_API_KEY is not defined in the environment.');
-    console.log('Please run the script with SERP_API_KEY=your_key npx ts-node ...');
+  if (!process.env.SERPAPI_API_KEY && !process.env.SERP_API_KEY) {
+    console.error('SERPAPI_API_KEY or SERP_API_KEY is not defined in the environment.');
+    console.log('Please run the script with SERPAPI_API_KEY=your_key npx tsx ...');
     return;
   }
 

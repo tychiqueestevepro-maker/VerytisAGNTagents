@@ -30,6 +30,7 @@ export const AgentRegistry: Record<string, Task<any, any>> = {
         target_industries:  ctx.target_industries,
         tone:               ctx.tone,
         brand_context:      ctx.brand_context,
+        prospection_playbook: ctx.prospection_playbook ?? ctx.config?.prospection_playbook,
       }, config);
       return { sequence };
     },
@@ -45,6 +46,9 @@ export const AgentRegistry: Record<string, Task<any, any>> = {
           organization_context: ctx.organization_context,
           experience_context:   ctx.experience_context,
           raw_signals:          ctx.raw_signals,
+          recent_serp_sources:  ctx.recent_serp_sources,
+          language:             ctx.config.language,
+          prospection_playbook: ctx.config.prospection_playbook,
         }),
       };
     },
@@ -62,6 +66,7 @@ export const AgentRegistry: Record<string, Task<any, any>> = {
         tone:          ctx.config.tone,
         language:      ctx.config.language,
         brand_context: ctx.config.brand_context,
+        prospection_playbook: ctx.config.prospection_playbook,
       }, config, meta);
       return { messageBundle: bundle };
     },
@@ -69,7 +74,7 @@ export const AgentRegistry: Record<string, Task<any, any>> = {
   qa: {
     name: "qa",
     run:  async (ctx, config, meta) => {
-      const qa = await runQAAgent(ctx.messageBundle);
+      const qa = await runQAAgent(ctx.messageBundle, ctx.config.prospection_playbook);
       return { qaResult: qa };
     },
   },

@@ -1,5 +1,6 @@
 import { getDb } from "../db/supabase.js";
 import { randomUUID } from "crypto";
+import { buildDefaultProspectionPlaybook } from "../services/prospectingPlaybook.service.js";
 
 async function seed() {
   const db = getDb();
@@ -70,7 +71,17 @@ async function seed() {
     channels: ["linkedin", "email"],
     tone: "conversational",
     language: "fr",
-    brand_context: "Verytis est une agence spécialisée dans l automation d agents IA pour le CRM."
+    brand_context: "Verytis est une agence spécialisée dans l automation d agents IA pour le CRM.",
+    prospection_playbook: buildDefaultProspectionPlaybook({
+      goal: "Qualifier des dirigeants B2B qui peuvent beneficier d'un flow de prospection automatise.",
+      offer: "Verytis transforme les process de prospection existants en flows automatises et personnalises.",
+      tone: "conversational",
+      roles: ["CEO", "COO", "CTO", "Founder"],
+      industries: ["Tech", "SaaS", "E-commerce"],
+      companySizes: ["11-50", "51-200"],
+      locations: ["France", "Europe"],
+      exclusions: ["Intern", "Student"],
+    }),
   };
 
   const { error: flowErr } = await db

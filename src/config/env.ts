@@ -10,6 +10,11 @@
 import { z } from "zod";
 import "dotenv/config";
 
+const OptionalSecretSchema = z.preprocess(
+  (value) => value === "" ? undefined : value,
+  z.string().min(1).optional()
+);
+
 const EnvSchema = z.object({
   // ── Supabase ───────────────────────────────────────────────────────────────
   SUPABASE_URL:              z.string().url(),
@@ -22,6 +27,11 @@ const EnvSchema = z.object({
   // ── Services ───────────────────────────────────────────────────────────────
   WHATSAPP_API_URL:   z.string().url().optional(),
   WHATSAPP_API_TOKEN: z.string().min(1).optional(),
+  SERPAPI_API_KEY:    OptionalSecretSchema,
+  SERP_API_KEY:       OptionalSecretSchema,
+  SERP_RECENCY_MONTHS: z.coerce.number().int().min(1).max(12).default(3),
+  SERP_RESULTS_PER_QUERY: z.coerce.number().int().min(1).max(10).default(5),
+  SERP_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(5500),
 
   // ── LinkedIn cloud runner ─────────────────────────────────────────────────
   LINKEDIN_SESSION_SECRET: z.string().min(16).optional(),

@@ -17,6 +17,11 @@ import { ProspectSchema, type Prospect } from "../schemas/prospect.schema.js";
 import type { QualificationResult } from "../schemas/qualifier.schema.js";
 import type { ProspectingConfig, ProspectingContext } from "../orchestrators/prospecting/prospecting.orchestrator.js";
 import { preScoreProspect, type PreScoreResult } from "./prospectScoring.service.js";
+import { normalizeProspectionPlaybook } from "./prospectingPlaybook.service.js";
+import {
+  getRecentSerpQualificationContext,
+  type RecentSerpQualificationContext,
+} from "./recentSerpQualification.service.js";
 
 const log = createLogger("service:prospectQualification");
 
@@ -278,6 +283,7 @@ function buildConfig(
   clientConfig: ClientConfigRow | null
 ): ProspectingConfig {
   const campaignConfig = asRecord(campaign?.config);
+  const clientExtraConfig = asRecord(clientConfig?.extra_config);
   const targetIcp = {
     ...asRecord(clientConfig?.target_icp),
     ...asRecord(campaignConfig.target_icp),
@@ -320,6 +326,14 @@ function buildConfig(
     pickString(prospection.decision_maker),
   ]);
 
+  const brandContext = pickString(
+    campaignConfig.offer,
+    campaign?.target_description,
+    campaign?.objective,
+    campaign?.description,
+    "Qualification de prospects B2B selon la cible de campagne."
+  );
+
   return {
     icp: {
       industries:       industries.length ? industries : ["Non precise"],
@@ -333,13 +347,23 @@ function buildConfig(
     },
     channels:      ["linkedin"],
     tone:          "conversational",
-    language:      "fr",
-    brand_context: pickString(
-      campaignConfig.offer,
-      campaign?.target_description,
-      campaign?.objective,
-      campaign?.description,
-      "Qualification de prospects B2B selon la cible de campagne."
+    language:      pickString(campaignConfig.language, clientExtraConfig.language, "fr"),
+    brand_context: brandContext,
+    prospection_playbook: normalizeProspectionPlaybook(
+      campaignConfig.prospection_playbook,
+      {
+        goal: pickString(campaign?.objective, campaignConfig.goal, brandContext),
+        offer: brandContext,
+        tone: pickString(campaign?.tone, campaignConfig.tone),
+        roles: jobTitles,
+        industries,
+        companySizes,
+        locations: geographies,
+        exclusions: [
+          ...toArray(clientConfig?.excluded_sectors),
+          ...toArray(campaignConfig.exclude_keywords),
+        ],
+      }
     ),
   };
 }
@@ -561,13 +585,22 @@ function normalizedProspectUpdate(
   };
 }
 
+function serpSourcesToRawSignals(recentSerp: RecentSerpQualificationContext): string[] {
+  return recentSerp.sources.map((source) => {
+    const dateHint = source.published_at ?? source.recency_filter;
+    return `[SERP recent ${dateHint}] ${source.title}: ${source.snippet} (${source.url})`;
+  });
+}
+
 function qualificationExtraData(
   prospect: ProspectRow,
   campaign: CampaignRow | null,
   preScore: PreScoreResult,
   qualification: QualificationResult,
-  runId: string
+  runId: string,
+  recentSerp: RecentSerpQualificationContext
 ): Record<string, unknown> {
+  const { sources, ...recentSerpContext } = recentSerp;
   return {
     ...asRecord(prospect.extra_data),
     qualification: {
@@ -575,6 +608,8 @@ function qualificationExtraData(
       campaign_id: campaign?.id ?? prospect.campaign_id,
       pre_score: preScore,
       result: qualification,
+      recent_serp_sources: sources,
+      recent_serp_context: recentSerpContext,
       qualified_at: new Date().toISOString(),
     },
   };
@@ -604,6 +639,23 @@ export async function qualifyProspect(
     },
     campaign
   );
+  const campaignCtx = campaignContext(campaign);
+  const organizationCtx = organizationContext(prospect);
+  const experienceCtx = experienceContext(prospect);
+  const recentSerp = await getRecentSerpQualificationContext({
+    prospect: {
+      fullName: normalizedProspect.full_name,
+      roleTitle: title || prospect.role_title || prospect.role || undefined,
+      companyName: companyName || prospect.company_name || normalizedProspect.company,
+      location: normalizedProspect.geography ?? prospect.location ?? undefined,
+    },
+    campaign: {
+      objective: pickString(campaignCtx?.objective, campaign?.objective),
+      targetDescription: pickString(campaignCtx?.target_description, campaign?.target_description, campaign?.description),
+      targetIndustries: config.icp.industries,
+      targetLocations: config.icp.geographies,
+    },
+  });
 
   await db
     .from("prospects")
@@ -632,16 +684,18 @@ export async function qualifyProspect(
   const ctx: ProspectingContext = {
     prospect:             normalizedProspect,
     config,
-    campaign_context:     campaignContext(campaign),
-    organization_context: organizationContext(prospect),
-    experience_context:   experienceContext(prospect),
-    raw_signals:          buildRawSignals(prospect),
+    campaign_context:     campaignCtx,
+    organization_context: organizationCtx,
+    experience_context:   experienceCtx,
+    raw_signals:          [...buildRawSignals(prospect), ...serpSourcesToRawSignals(recentSerp)],
+    recent_serp_sources:  recentSerp.sources,
   };
 
   log.info("Manual prospect qualification started", {
     prospectId: prospect.id,
     campaignId: campaign?.id ?? null,
     preScore: preScore.score,
+    recentSerpSources: recentSerp.sources.length,
   });
 
   const result = await runTask<ProspectingContext, Partial<ProspectingContext>>(
@@ -681,7 +735,7 @@ export async function qualifyProspect(
 
   await db.from("prospects").update({
     recommended_offer: pickString(asRecord(campaign?.config).offer, campaign?.objective, campaign?.target_description) || null,
-    extra_data:        qualificationExtraData(prospect, campaign, preScore, qualification, result.runId),
+    extra_data:        qualificationExtraData(prospect, campaign, preScore, qualification, result.runId, recentSerp),
     updated_at:        new Date().toISOString(),
   }).eq("id", prospect.id);
 

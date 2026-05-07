@@ -9,6 +9,7 @@ export interface SerpSearchInput {
   country: string;
   location?: string;
   limit?: number;
+  recencyMonths?: number;
 }
 
 export interface SerpOrganicResult {
@@ -16,6 +17,9 @@ export interface SerpOrganicResult {
   link: string;
   snippet?: string;
   position?: number;
+  displayed_link?: string;
+  source?: string;
+  date?: string;
 }
 
 export interface NormalizedSerpResult {

@@ -1,3 +1,8 @@
+import {
+  normalizeProspectionPlaybook,
+  playbookRuleKeywords,
+} from "./prospectingPlaybook.service.js";
+
 export type PreScoreLevel = "high" | "medium" | "low";
 
 export interface PreScoreResult {
@@ -11,6 +16,9 @@ export interface PreScoreResult {
     company: boolean;
     url: boolean;
     targetDescriptionOverlap: boolean;
+    playbookRules: boolean;
+    prioritySignals: boolean;
+    exclusions: boolean;
   };
 }
 
@@ -228,6 +236,19 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
     campaign?.objective,
     campaign?.description
   );
+  const playbook = normalizeProspectionPlaybook(config.prospection_playbook, {
+    goal: pickString(campaign?.objective, targetDescription),
+    offer: targetDescription,
+    tone: pickString(campaign?.tone, config.tone),
+    roles: targetRoles,
+    industries: targetIndustries,
+    companySizes: targetCompanySizes,
+    locations: targetLocations,
+    exclusions: [
+      ...toArray(config.exclude_keywords),
+      ...toArray(targetIcp.exclude_keywords),
+    ],
+  });
   const roleTitle = pickString(currentExperience.title, prospect.role_title, prospect.role, prospect.title, extraData.original_headline);
   const companyName = pickString(
     prospect.company_name,
@@ -302,6 +323,7 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
   const locationText = [location, rawText].join(" ");
   const companySizeText = [companySize, rawText].join(" ");
   const fullProspectText = [prospect.decision_maker, roleTitle, companyName, companyDescription, location, rawText].join(" ");
+  const playbookText = fullProspectText;
 
   const targetDescriptionOverlap = Boolean(targetDescription)
     && hasMeaningfulOverlap(fullProspectText, targetDescription);
@@ -322,7 +344,23 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
     ? matchesAnyCriterion(companySizeText, targetCompanySizes)
     : false;
 
-  const score = Math.min(100,
+  const qualificationRuleMatches = playbook.qualification_rules.filter((rule) =>
+    matchesAnyCriterion(playbookText, [rule.name, rule.description, ...toArray(rule.keywords)])
+  );
+  const priorityRuleMatches = playbook.priority_rules.filter((rule) =>
+    matchesAnyCriterion(playbookText, [rule.name, rule.description, ...toArray(rule.keywords)])
+  );
+  const exclusionKeywords = unique([
+    ...toArray(config.exclude_keywords),
+    ...toArray(targetIcp.exclude_keywords),
+    ...playbookRuleKeywords(playbook, "exclusion_rules"),
+  ]);
+  const exclusionMatches = exclusionKeywords.length > 0
+    ? matchesAnyCriterion(playbookText, exclusionKeywords)
+    : false;
+  const playbookScore = Math.min(15, qualificationRuleMatches.reduce((sum, rule) => sum + Math.min(8, rule.weight), 0));
+  const priorityScore = Math.min(10, priorityRuleMatches.reduce((sum, rule) => sum + Math.min(5, rule.weight), 0));
+  const baseScore = Math.min(100,
     (roleMatches ? 30 : 0) +
     (industryMatches ? 25 : 0) +
     (locationMatches ? 20 : 0) +
@@ -330,6 +368,7 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
     (companyName ? 15 : 0) +
     (profileUrl || websiteUrl ? 10 : 0)
   );
+  const score = Math.max(0, Math.min(100, baseScore + playbookScore + priorityScore - (exclusionMatches ? 40 : 0)));
 
   return {
     score,
@@ -342,6 +381,9 @@ export function preScoreProspect(prospect: any, campaign: any | null | undefined
       company: Boolean(companyName),
       url: Boolean(profileUrl || websiteUrl),
       targetDescriptionOverlap,
+      playbookRules: qualificationRuleMatches.length > 0,
+      prioritySignals: priorityRuleMatches.length > 0,
+      exclusions: exclusionMatches,
     },
   };
 }

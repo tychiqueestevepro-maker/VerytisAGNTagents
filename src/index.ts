@@ -22,6 +22,7 @@ export { MessageSchema, MessageBundleSchema, OutreachChannelSchema } from "./sch
 export { normaliseExtensionPayload } from "./services/extension.service.js";
 export { qualifyProspect }            from "./services/prospectQualification.service.js";
 export { preScoreProspect }           from "./services/prospectScoring.service.js";
+export { buildDefaultProspectionPlaybook, normalizeProspectionPlaybook } from "./services/prospectingPlaybook.service.js";
 export { processOneLinkedInCloudAction, startLinkedInCloudRunner } from "./services/linkedinCloudRunner.service.js";
 
 // ── Infrastructure ───────────────────────────────────────────────────────────
@@ -51,4 +52,5 @@ export type { QualifierInput }                                   from "./agents/
 export type { EnrichmentInput, EnrichmentOutput }                from "./agents/prospecting/enrichment.agent.js";
 export type { QualifyProspectInput, QualifyProspectOutput }      from "./services/prospectQualification.service.js";
 export type { PreScoreResult, PreScoreLevel }                    from "./services/prospectScoring.service.js";
+export type { ProspectionPlaybook }                              from "./services/prospectingPlaybook.service.js";
 export type { ExtensionPayload, ExtensionRawPayload, NormalisedExtensionProspect } from "./services/extension.service.js";
